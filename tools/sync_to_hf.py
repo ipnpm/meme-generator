@@ -108,21 +108,28 @@ def collect_local_files(repo_root: Path) -> dict[str, tuple[str, str]]:
 
 def collect_remote_files(api: HfApi) -> dict[str, tuple[str, str]]:
     """返回 {仓库路径: ("sha1"|"sha256", oid)}。只保留同步范围内的文件。"""
+    from huggingface_hub.hf_api import RepoFile
+
     prefixes = tuple(d + "/" for d in SYNC_DIRS)
     result: dict[str, tuple[str, str]] = {}
     for info in api.list_repo_tree(HF_REPO, repo_type=HF_REPO_TYPE, recursive=True):
-        if info.type != "file":
+        # list_repo_tree 会返回 RepoFile（文件）和 RepoFolder（目录），用 isinstance 区分
+        if not isinstance(info, RepoFile):
             continue
         path = info.path
         if path in HF_ONLY_FILES:
             continue
         if not (path.startswith(prefixes) or path in SYNC_FILES):
             continue
-        lfs = getattr(info, "lfs", None)
-        if lfs:
-            result[path] = ("sha256", lfs.oid)
+        if info.lfs:
+            # LFS 文件：lfs.sha256 是文件内容的 sha256
+            result[path] = ("sha256", info.lfs.sha256)
+        elif info.xet_hash:
+            # Xet 存储：xet_hash 是内容的 sha256（新版 HF 默认 Xet 后端）
+            result[path] = ("sha256", info.xet_hash)
         else:
-            result[path] = ("sha1", info.oid)
+            # 普通文件：blob_id 是 git blob sha1
+            result[path] = ("sha1", info.blob_id)
     return result
 
 
