@@ -4,12 +4,13 @@
 工作原理：
   1. 扫描本地 SYNC_DIRS / SYNC_FILES，计算每个文件的内容哈希。
      - 普通文件: git blob sha1（sha1("blob <len>\\0" + 内容)），与 HF API 返回的 oid 对比
-     - LFS 文件: sha256，与 HF API 返回的 lfs.oid 对比
+     - LFS/Xet 文件: sha256，与 HF API 返回的 lfs.oid / xet_hash 对比
      - 文本文件先做 CRLF→LF 规范化（Windows checkout / autocrlf 场景）
   2. 从 HF Space API 拉取远端文件清单，逐文件对比。
-  3. 只上传「新增或内容变化」的文件；HF 按内容哈希去重，未变化的文件不会重复占用空间。
-  4. 删除远端存在、但本地已不存在的表情文件（上游移除表情时自动跟进）。
-  5. HF Space 的专有文件（根目录 app.py、README.md 的 gradio front matter、
+  3. 全部差异（新增/变化/删除）通过 create_commit 一次性提交——
+     HF 免费版限制 128 commits/小时，逐文件 commit 会触发 429 限流，
+     单次 commit 不受影响（文件内容走独立上传通道）。
+  4. HF Space 的专有文件（根目录 app.py、README.md 的 gradio front matter、
      requirements.txt 等）永不触碰。
 
 用法（GitHub Actions 自动运行，也可本地手动运行）：
@@ -139,20 +140,43 @@ def file_matches(remote_entry: tuple[str, str], local_hashes: tuple[str, str]) -
     return oid == (sha256 if kind == "sha256" else blob_sha1)
 
 
-def upload_one(api: HfApi, local: Path, rel: str) -> bool:
+def commit_all(api: HfApi, repo_root: Path, to_upload: list[str], to_delete: list[str]) -> bool:
+    """一次 commit 提交全部变更（HF 免费版限 128 commits/小时，不能逐文件提交）。
+
+    用 create_commit + CommitOperationAdd/Delete：380 个文件也只是 1 次 commit，
+    文件内容走独立的上传通道，不受 commit 限流影响。
+    """
+    from huggingface_hub._commit_api import CommitOperationAdd, CommitOperationDelete
+
+    operations = []
+    for rel in to_upload:
+        operations.append(CommitOperationAdd(path_in_repo=rel, path_or_fileobj=repo_root / rel))
+    for rel in to_delete:
+        operations.append(CommitOperationDelete(path_in_repo=rel))
+
+    msg = f"sync: 上传 {len(to_upload)} 个文件"
+    if to_delete:
+        msg += f"，删除 {len(to_delete)} 个文件"
+
     for attempt in range(3):
         try:
-            api.upload_file(
-                path_or_fileobj=str(local),
-                path_in_repo=rel,
+            info = api.create_commit(
                 repo_id=HF_REPO,
                 repo_type=HF_REPO_TYPE,
-                commit_message=f"sync: {rel}",
+                operations=operations,
+                commit_message=msg,
             )
+            print(f"      commit: {info.commit_url}")
             return True
         except Exception as e:
-            print(f"  [retry {attempt + 1}/3] {rel}: {e}")
-            time.sleep(5 * (attempt + 1))
+            err = str(e)
+            print(f"  [retry {attempt + 1}/3] {err[:300]}")
+            if "429" in err or "rate limit" in err.lower():
+                # commit 限流：默认 128/小时，等一小时后重试基本必成
+                print("      [wait] 触发 HF commit 限流，等待 5 分钟后重试 ...")
+                time.sleep(300)
+            else:
+                time.sleep(10 * (attempt + 1))
     return False
 
 
@@ -197,33 +221,12 @@ def main() -> int:
         print("[dry-run] 未做任何修改")
         return 0
 
-    print("[4/4] 开始上传 ...")
-    ok, fail = 0, 0
-    for i, rel in enumerate(to_upload, 1):
-        print(f"  ({i}/{len(to_upload)}) {rel}", flush=True)
-        if upload_one(api, repo_root / rel, rel):
-            ok += 1
-        else:
-            fail += 1
-    print(f"      上传完成: 成功 {ok}, 失败 {fail}")
-
-    if to_delete:
-        print(f"      删除 {len(to_delete)} 个上游已移除的文件 ...")
-        try:
-            api.delete_files(
-                HF_REPO,
-                repo_type=HF_REPO_TYPE,
-                paths=to_delete,
-                commit_message="sync: 删除上游已移除的表情文件",
-            )
-        except Exception as e:
-            print(f"      [warn] 删除失败（不影响表情使用，下次运行会重试）: {e}")
-
-    if fail:
-        print(f"[warn] 有 {fail} 个文件上传失败，请重跑本 workflow")
-        return 1
-    print("[done] 同步完成")
-    return 0
+    print(f"[4/4] 一次 commit 提交全部变更（{len(to_upload)} 上传 + {len(to_delete)} 删除）...")
+    if commit_all(api, repo_root, to_upload, to_delete):
+        print("[done] 同步完成")
+        return 0
+    print("[warn] 提交失败（若为限流，1 小时后重跑 workflow 即可）")
+    return 1
 
 
 if __name__ == "__main__":
