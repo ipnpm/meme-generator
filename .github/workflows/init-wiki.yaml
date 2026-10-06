@@ -33,23 +33,30 @@ jobs:
             exit 1
           fi
           echo "WIKI_TOKEN 已配置（长度 ${#WIKI_TOKEN}）"
-          # 验证 token 身份
+          # 1) 验证 token 身份（无 scope 也能通过，只能证明 token 本身有效）
           who=$(curl -s -H "Authorization: Bearer $WIKI_TOKEN" https://api.github.com/user | grep '"login"' | head -1)
           echo "Token 身份: $who"
           if [ -z "$who" ]; then
-            echo "❌ token 无效（过期/输错/权限没勾对）。请重新创建并更新 secret"
+            echo "❌ token 无效（过期/复制不完整）。请重新创建并更新 secret"
             exit 1
           fi
-          # 验证对 wiki 仓库的读权限（读都不行说明 repo access 没勾对）
-          code=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer $WIKI_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}.wiki")
-          echo "wiki 仓库 API 状态码: $code"
-          if [ "$code" != "200" ]; then
-            echo "❌ token 看不到 wiki 仓库 —— Repository access 没勾选 meme-generator"
+          # 2) 检查 scopes 响应头 —— classic token 勾了什么权限直接可见
+          scopes=$(curl -sI -H "Authorization: Bearer $WIKI_TOKEN" https://api.github.com/user | grep -i '^x-oauth-scopes' | tr -d '\r')
+          echo "Token scopes: ${scopes:-（无任何权限）}"
+          case "$scopes" in
+            *repo*)
+              echo "✅ token 含 repo 权限" ;;
+            *)
+              echo "❌ token 缺少 repo 权限 —— 请重新创建 token 并勾选 repo（大项整体勾上），再更新 secret"
+              exit 1 ;;
+          esac
+          # 3) 用 git ls-remote 验证对 wiki 的读访问（wiki 不在 REST API 里，只能走 git 协议）
+          if git ls-remote "https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git" >/dev/null 2>&1; then
+            echo "✅ token 可以访问 wiki 仓库"
+          else
+            echo "❌ token 无法读取 wiki —— 账号可能不是仓库 owner，请确认用 ipnpm 账号创建 token"
             exit 1
           fi
-          echo "✅ token 有效，继续"
 
       - name: 克隆你的 Wiki 仓库（PAT 认证）
         env:
