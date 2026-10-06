@@ -17,9 +17,9 @@ jobs:
   init-wiki:
     runs-on: ubuntu-latest
     steps:
-      - name: 克隆你的 Wiki 仓库
+      - name: 克隆你的 Wiki 仓库（带认证，push 时需要）
         run: |
-          git clone https://github.com/${{ github.repository }}.wiki.git wiki
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
 
       - name: 克隆上游 Wiki（完整历史一并迁移）
         run: git clone https://github.com/Memes02/meme-generator.wiki.git upstream
