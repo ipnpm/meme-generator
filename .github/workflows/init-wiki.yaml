@@ -70,8 +70,10 @@ jobs:
       - name: 拷贝内容并替换链接
         run: |
           cd wiki
+          # 清空占位内容，但保留本地 .git（保留 wiki 自身的历史，否则推送会 non-fast-forward）
           find . -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
-          cp -r ../upstream/. .
+          # 用 tar 拷贝上游内容，排除 .git（cp -r 会把上游的 git 状态覆盖进来）
+          tar --exclude='.git' -C upstream -cf - . | tar -xf -
           python3 - << 'EOF'
           from pathlib import Path
           old = "Memes02/meme-generator"
