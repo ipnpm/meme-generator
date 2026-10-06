@@ -7,9 +7,12 @@ name: 初始化 Wiki（一次性）
 #   1. 先在网页上启用你的 Wiki：
 #      打开 https://github.com/ipnpm/meme-generator/wiki
 #      点 "Create the first page" → 随便写一行字 → Save
-#   2. 创建一个有 repo 权限（含 wiki 写权限）的 Personal Access Token，
-#      存为仓库 secret，名字 WIKI_TOKEN：
+#   2. 创建 PAT 存为仓库 secret，名字 WIKI_TOKEN：
 #      Settings → Secrets and variables → Actions → New repository secret
+#      PAT 权限要求：
+#        - Classic token：勾选 repo（整体）
+#        - Fine-grained token：Resource owner 选你自己（ipnpm），
+#          Repository access 勾选 meme-generator，Permissions → Contents: Read and write
 
 on:
   workflow_dispatch:
@@ -21,11 +24,38 @@ jobs:
   init-wiki:
     runs-on: ubuntu-latest
     steps:
+      - name: 诊断 WIKI_TOKEN
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          if [ -z "$WIKI_TOKEN" ]; then
+            echo "❌ WIKI_TOKEN secret 未配置（名字必须精确是 WIKI_TOKEN）"
+            exit 1
+          fi
+          echo "WIKI_TOKEN 已配置（长度 ${#WIKI_TOKEN}）"
+          # 验证 token 身份
+          who=$(curl -s -H "Authorization: Bearer $WIKI_TOKEN" https://api.github.com/user | grep '"login"' | head -1)
+          echo "Token 身份: $who"
+          if [ -z "$who" ]; then
+            echo "❌ token 无效（过期/输错/权限没勾对）。请重新创建并更新 secret"
+            exit 1
+          fi
+          # 验证对 wiki 仓库的读权限（读都不行说明 repo access 没勾对）
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $WIKI_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}.wiki")
+          echo "wiki 仓库 API 状态码: $code"
+          if [ "$code" != "200" ]; then
+            echo "❌ token 看不到 wiki 仓库 —— Repository access 没勾选 meme-generator"
+            exit 1
+          fi
+          echo "✅ token 有效，继续"
+
       - name: 克隆你的 Wiki 仓库（PAT 认证）
         env:
           WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
         run: |
-          git clone https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git wiki
+          git clone "https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git" wiki
 
       - name: 克隆上游 Wiki（完整历史一并迁移）
         run: git clone https://github.com/Memes02/meme-generator.wiki.git upstream
@@ -46,7 +76,9 @@ jobs:
                   print('替换:', f.name)
           EOF
 
-      - name: 提交并推送
+      - name: 提交并推送（显式 remote，与上游 update.yaml 的机制一致）
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
         run: |
           cd wiki
           git config user.name "github-actions[bot]"
@@ -54,8 +86,10 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "无变化（可能已初始化过）"
-          else
-            git commit -m "初始化 Wiki：从上游 Memes02 迁移文档与表情预览"
-            git push
-            echo "✅ Wiki 初始化完成"
+            exit 0
           fi
+          git commit -m "初始化 Wiki：从上游 Memes02 迁移文档与表情预览"
+          # 显式 remote URL 推送，不依赖 origin（与 actions-js/push 相同机制）
+          remote="https://${GITHUB_ACTOR}:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+          git push "$remote" HEAD:master
+          echo "✅ Wiki 初始化完成"
