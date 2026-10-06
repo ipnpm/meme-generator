@@ -29,10 +29,10 @@ jobs:
           path: wiki
           fetch-depth: 0
 
-      - name: 设置 Python 环境
+      - name: 设置 Python 环境（pyproject 要求 ^3.12）
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: 安装 Poetry
         uses: Gr1N/setup-poetry@v9
@@ -47,7 +47,7 @@ jobs:
           sudo mkdir -p /usr/share/fonts/myfonts
           sudo cp resources/fonts/* /usr/share/fonts/myfonts/
           fc-cache -fv
-      - name: 更新 memes.md 文件
+      - name: 更新表情列表
         run: poetry run python wiki/update_meme_list.py
 
       - name: 提交并推送 Wiki 更新

@@ -1,0 +1,56 @@
+name: 初始化 Wiki（一次性）
+
+# 把上游 Memes02 的 Wiki 内容（文档+脚本+预览图）搬到你的 wiki 仓库，
+# 并把文档里的链接替换为你的仓库地址。跑一次即可，之后可以删除本文件。
+#
+# 前提：先在网页上启用你的 Wiki（否则 wiki 仓库不存在，本 workflow 会失败）：
+#   打开 https://github.com/ipnpm/meme-generator/wiki
+#   点 "Create the first page" → 随便写一行字 → Save
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  init-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 克隆你的 Wiki 仓库
+        run: |
+          git clone https://github.com/${{ github.repository }}.wiki.git wiki
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 克隆上游 Wiki（完整历史一并迁移）
+        run: git clone https://github.com/Memes02/meme-generator.wiki.git upstream
+
+      - name: 拷贝内容并替换链接
+        run: |
+          cd wiki
+          find . -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+          cp -r ../upstream/. .
+          python3 - << 'EOF'
+          from pathlib import Path
+          old = "Memes02/meme-generator"
+          new = "${{ github.repository }}"
+          for f in Path('.').glob('*.md'):
+              text = f.read_text(encoding='utf-8')
+              if old in text:
+                  f.write_text(text.replace(old, new), encoding='utf-8')
+                  print('替换:', f.name)
+          EOF
+
+      - name: 提交并推送
+        run: |
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then
+            echo "无变化（可能已初始化过）"
+          else
+            git commit -m "初始化 Wiki：从上游 Memes02 迁移文档与表情预览"
+            git push
+            echo "✅ Wiki 初始化完成"
+          fi
