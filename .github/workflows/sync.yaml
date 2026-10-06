@@ -86,3 +86,19 @@ jobs:
           git commit -m "同步表情更新"
           git push
           echo "✅ 已提交表情更新"
+
+      # GITHUB_TOKEN 产生的 push 不会触发其他 workflow（GitHub 防递归规则），
+      # 所以这里用 PAT 显式触发下游的两个 workflow（与上游 Memes02 的机制一致）
+      - name: 触发「同步表情到 HuggingFace Space」
+        if: steps.changes.outputs.changed == 'true'
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: sync-to-hf.yaml
+          token: ${{ secrets.WIKI_TOKEN }}
+
+      - name: 触发「更新 resource_list.json & Wiki」
+        if: steps.changes.outputs.changed == 'true'
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: update.yaml
+          token: ${{ secrets.WIKI_TOKEN }}
