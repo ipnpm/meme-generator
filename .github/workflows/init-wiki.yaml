@@ -3,23 +3,29 @@ name: 初始化 Wiki（一次性）
 # 把上游 Memes02 的 Wiki 内容（文档+脚本+预览图）搬到你的 wiki 仓库，
 # 并把文档里的链接替换为你的仓库地址。跑一次即可，之后可以删除本文件。
 #
-# 前提：先在网页上启用你的 Wiki（否则 wiki 仓库不存在，本 workflow 会失败）：
-#   打开 https://github.com/ipnpm/meme-generator/wiki
-#   点 "Create the first page" → 随便写一行字 → Save
+# 前提（缺一不可）：
+#   1. 先在网页上启用你的 Wiki：
+#      打开 https://github.com/ipnpm/meme-generator/wiki
+#      点 "Create the first page" → 随便写一行字 → Save
+#   2. 创建一个有 repo 权限（含 wiki 写权限）的 Personal Access Token，
+#      存为仓库 secret，名字 WIKI_TOKEN：
+#      Settings → Secrets and variables → Actions → New repository secret
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   init-wiki:
     runs-on: ubuntu-latest
     steps:
-      - name: 克隆你的 Wiki 仓库（带认证，push 时需要）
+      - name: 克隆你的 Wiki 仓库（PAT 认证）
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
         run: |
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+          git clone https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git wiki
 
       - name: 克隆上游 Wiki（完整历史一并迁移）
         run: git clone https://github.com/Memes02/meme-generator.wiki.git upstream
