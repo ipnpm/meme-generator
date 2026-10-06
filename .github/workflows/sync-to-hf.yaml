@@ -1,0 +1,54 @@
+name: 同步表情到 HuggingFace Space
+
+# 当表情目录或核心代码有更新时触发（上游 sync.yaml 每小时同步一次表情，
+# 它提交后会 push 到 main，这里跟着触发）；也支持手动运行
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "meme_generator/memes/**"
+      - "meme_generator/memes_jj/**"
+      - "meme_generator/memes_emoji/**"
+      - "meme_generator/memes_other/**"
+      - "meme_generator/memes_emoji_nsfw/**"
+      - "meme_generator/*.py"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-to-hf
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync-to-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+        with:
+          # 需要 fetch 一些历史，用于生成提交信息里的对比范围
+          fetch-depth: 10
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 huggingface_hub
+        run: pip install "huggingface_hub[upload]"
+
+      - name: 同步表情目录到 HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO: ${{ vars.HF_REPO || 'donotthink/meme' }}
+        run: python tools/sync_to_hf.py
+
+      - name: 输出结果摘要
+        if: always()
+        run: |
+          echo "=== 同步完成 ==="
