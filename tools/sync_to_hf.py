@@ -37,6 +37,7 @@ SYNC_DIRS = [
     "meme_generator/memes_emoji",
     "meme_generator/memes_other",
     "meme_generator/memes_emoji_nsfw",
+    "meme_generator/memes_tudou",
 ]
 
 # meme_generator 核心代码也同步（HF Space 直接用这份代码跑 FastAPI）

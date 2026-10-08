@@ -4,7 +4,8 @@ name: 同步表情仓库
 # （fork 自 Memes02/meme-generator，上游结构与此相同）
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    # 每天运行一次：UTC 0:00 = 北京时间早上 8 点
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +50,13 @@ jobs:
           repository: anyliew/meme_emoji_nsfw
           path: ${{ github.workspace }}/memes_emoji_nsfw
 
+      - name: 检出tudou表情仓库
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          repository: LRZ9712/tudou-meme
+          path: ${{ github.workspace }}/tudou
+
       - name: 清理数据并同步
         shell: bash {0}
         run: |
@@ -64,6 +72,20 @@ jobs:
           cp -r ${{ github.workspace }}/memes_emoji/emoji/* meme_generator/memes_emoji/
           cp -r ${{ github.workspace }}/memes_emoji_nsfw/emoji/* meme_generator/memes_emoji_nsfw/
           rm -rf ${{ github.workspace }}/meme ${{ github.workspace }}/memes_jj ${{ github.workspace }}/memes_emoji ${{ github.workspace }}/memes_emoji_nsfw
+          # 同步 tudou 表情：只复制不与其他目录重名的表情（重名的保留现有版本）
+          # tudou 的 meme/ 目录下非目录文件（如 md）跳过
+          mkdir -p meme_generator/memes_tudou
+          for d in ${{ github.workspace }}/tudou/meme/*/; do
+            name=$(basename "$d")
+            # 跳过已在其他表情目录中的重名表情
+            if [ -d "meme_generator/memes/$name" ] || [ -d "meme_generator/memes_jj/$name" ] \
+               || [ -d "meme_generator/memes_emoji/$name" ] || [ -d "meme_generator/memes_other/$name" ] \
+               || [ -d "meme_generator/memes_emoji_nsfw/$name" ]; then
+              continue
+            fi
+            cp -r "$d" "meme_generator/memes_tudou/$name"
+          done
+          rm -rf ${{ github.workspace }}/tudou
           # 清理同步过程中可能带进来的缓存目录
           find meme_generator -type d -name '__pycache__' -prune -exec rm -rf {} +
 

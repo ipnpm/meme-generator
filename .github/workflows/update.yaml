@@ -10,6 +10,7 @@ on:
       - "meme_generator/memes_emoji/**"
       - "meme_generator/memes_other/**"
       - "meme_generator/memes_emoji_nsfw/**"
+      - "meme_generator/memes_tudou/**"
   workflow_dispatch:
 
 permissions:
