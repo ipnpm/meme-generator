@@ -29,6 +29,10 @@ jobs:
           repository: ${{ github.repository }}.wiki
           path: wiki
           fetch-depth: 0
+          # 关键：不持久化 GITHUB_TOKEN 凭证。checkout 默认会在 .git/config 写入
+          # GITHUB_TOKEN 的 Authorization extraheader，推送时它会覆盖显式 remote URL
+          # 里的 WIKI_TOKEN，导致 403（denied to github-actions[bot]）
+          persist-credentials: false
 
       - name: 设置 Python 环境（pyproject 要求 ^3.12）
         uses: actions/setup-python@v5
@@ -64,6 +68,8 @@ jobs:
             exit 0
           fi
           git commit -m "更新 Meme 列表"
+          # 双保险：清掉 checkout 可能残留的 GITHUB_TOKEN extraheader，确保用 WIKI_TOKEN 认证
+          git config --unset-all http.https://github.com/.extraheader 2>/dev/null || true
           # 显式 remote URL 推送（与 init-wiki 相同机制，避免 actions-js/push 的认证问题）
           remote="https://x-access-token:${WIKI_TOKEN}@github.com/${{ github.repository }}.wiki.git"
           git push "$remote" HEAD:master
