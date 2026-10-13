@@ -4,6 +4,7 @@ from pil_utils import BuildImage
 from meme_generator import MemeArgsModel, add_meme
 from meme_generator.exception import TextOverLength
 from meme_generator.utils import make_jpg_or_gif
+from meme_generator.tags import MemeTags
 img_dir = Path(__file__).parent / "images"
 def kurogames_phoebe_score_sheet(images: list[BuildImage], texts: list[str], args: MemeArgsModel):
     frame = BuildImage.open(img_dir / "0.png")
@@ -18,10 +19,10 @@ def kurogames_phoebe_score_sheet(images: list[BuildImage], texts: list[str], arg
     text = f"{name},你这个月评分为0,纯纯的饭桶！"
     try:
         frame.draw_text(
-            (50, 50, 740, 280),
+            (0, 0, 1620, 622),
             text,
             fill="black",
-            max_fontsize=100,
+            max_fontsize=200,
             min_fontsize=35,
             allow_wrap=True,
             lines_align="center",
@@ -30,8 +31,8 @@ def kurogames_phoebe_score_sheet(images: list[BuildImage], texts: list[str], arg
     except ValueError:
         raise TextOverLength(name)
     def make(imgs: list[BuildImage]) -> BuildImage:
-        img = imgs[0].convert("RGBA").circle().resize((140, 140))
-        return frame.copy().paste(img, (155, 855), alpha=True)
+        img = imgs[0].convert("RGBA").circle().resize((235, 235))
+        return frame.copy().paste(img, (332, 1730), alpha=True)
     return make_jpg_or_gif(images, make)
 add_meme(
     "kurogames_phoebe_score_sheet",
@@ -41,6 +42,7 @@ add_meme(
     min_texts=0,
     max_texts=1,
     keywords=["菲比评分表","评分表"],
+    tags=MemeTags.wuthering_waves,
     date_created=datetime(2025, 5, 24),
-    date_modified=datetime(2025, 5, 24),
+    date_modified=datetime(2026, 10, 12),
 )
